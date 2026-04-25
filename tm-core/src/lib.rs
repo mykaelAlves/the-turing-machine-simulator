@@ -1,323 +1,118 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
-pub const MAX_DEFAULT_TAPE_SIZE: usize = 512;
+pub mod default_tm_configs {
+    /// Even if the machine is infinite, we need to set a maximum tape size to
+    /// prevent the simulator from running indefinitely. This is a reasonable
+    /// limit for most Turing machine simulations, as it allows us to explore a
+    /// wide range of configurations without risking infinite loops or excessive
+    /// memory usage.
+    ///
+    /// Can be overriden by the user.
+    pub const MAX_TAPE_SIZE: u16 = 5_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Direction {
-    Left,
-    Right,
-    Stay
+    /// Similarly, we need to set a maximum number of steps to prevent the
+    /// simulator from running indefinitely. This is especially important for
+    /// Turing machines that may not halt, as it allows us to limit the
+    /// execution time and resources used by the simulator.
+    ///
+    /// Can be overriden by the user.
+    pub const MAX_STEPS: u16 = 10_000;
+
+    /// The maximum number of tapes a Turing machine can have. This is a
+    /// reasonable limit for most Turing machine simulations, as it allows us
+    /// to explore a wide range of configurations without risking excessive
+    /// complexity or resource usage.
+    ///
+    /// Can be overriden by the user.
+    pub const MAX_TAPES: u8 = 4;
+
+    /// The maximum number of heads a Turing machine can have. This is a
+    /// reasonable limit for most Turing machine simulations, as it allows us
+    /// to explore a wide range of configurations without risking excessive
+    /// complexity or resource usage.
+    ///
+    /// Can be overriden by the user.
+    pub const MAX_HEADS: u8 = 4;
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HaltState {
-    Accept,
-    Reject(RejectReason)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TuringMachineType {
-    Deterministic(Characteristics),
-    NonDeterministic(Characteristics)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Characteristics {
-    pub move_type: MoveType,
-    pub tape_type: TapeType,
-    pub machine_subtype: TuringMachineSubtype
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MoveType {
-    Strict, // cant stay still as in the classic definition of a Turing machine
-    NonStrict
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TapeType {
-    Infinite,
-    SemiInfinite(TapeBoundary),
-    Finite(usize)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TapeBoundary {
-    Left,
-    Right
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TuringMachineSubtype {
-    SingleTape,
-    MultiTape,
-    MultiHead,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RejectReason {
-    NoTransition,
-    InvalidTransition,
-    TapeOverflow,
-    Timeout,
-    HitWall,
-    Unexpected(InternalError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InternalError {
-
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct State(pub u16);
 
 pub type Symbol = Option<char>;
 
-pub type ReadingState = (State, Symbol);
-pub type Transition = (State, Symbol, Direction);
+pub type SimpleReadingState = (State, Symbol);
+pub type SimpleTransition = (State, Symbol, Direction);
 
-#[derive(Debug, Clone)]
-pub struct Tape {
+pub type MultiTapeReadingState<const TAPES: u8> = (State, [Symbol; TAPES]);
+pub type MultiTapeTransition<const TAPES: u8> = (State, [Symbol; TAPES], [Direction; TAPES]);
+
+pub type MultiHeadReadingState<const HEADS: u8> = (State, [Symbol; HEADS]);
+pub type MultiHeadTransition<const HEADS: u8> = (State, [Symbol; HEADS], [Direction; HEADS]);
+
+pub type SingleTapeReadingState = (State, Symbol);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    Left,
+    Right,
+    Stay,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HaltingState {
+    Accept,
+    Reject(HaltingStateReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HaltingStateReason {
+    NoTransition,
+    HitWall,
+    Unexpected(InternalHaltingStateReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InternalHaltingStateReason {
+    ExceededMaxSteps,
+    ExceededMaxTapeSize,
+    InvalidTransition,
+}
+
+pub trait TuringMachine {
+    fn step(&mut self);
+    fn reset(&mut self);
+    fn back(&mut self);
+}
+
+pub trait Tape {
+    fn read(&self) -> Symbol;
+    fn write(&mut self, symbol: Symbol);
+    fn to_vec(&self) -> Vec<Symbol>;
+}
+
+pub struct State(pub u16);
+
+pub struct SingleTape {
+    /// Left of the head. The last element is the one immediately to the left of
+    /// the head.
     pub left: Vec<Symbol>,
+
+    /// The symbol under the head.
     pub head: Symbol,
+
+    /// Right of the head. The last element is the one immediately to the right
+    /// of the head.
     pub right: Vec<Symbol>,
-    pub size: usize,
 }
 
-impl Tape {
-    pub fn new() -> Self {
-        Self {
-            left: Vec::new(),
-            head: None,
-            right: Vec::new(),
-            size: MAX_DEFAULT_TAPE_SIZE
-        }
-    }
+pub struct MultiHeadTape<const HEADS: usize> {
+    /// All symbols on the tape. The head positions are tracked separately, so
+    /// this is just a flat vector of symbols. The head positions are used to
+    /// determine which symbol each head is currently reading or writing.
+    pub memory: Vec<Symbol>,
 
-    pub fn read(&self) -> Vec<Symbol> {
-        let mut full_tape = self.left.clone();
-        full_tape.push(self.head);
-        full_tape.extend(self.right.iter().rev().cloned());
-        
-        full_tape
-    }
+    /// Pointers to the current position of each head.
+    pub head_positions: [usize; HEADS],
 
-    pub fn write(&mut self, symbol: Symbol) {
-        self.head = symbol;
-    }
-}
-
-pub struct TuringMachineBuilder {
-    tape: Option<Tape>,
-    initial_tape: Option<Tape>,
-    initial_state: Option<State>,
-    current_state: Option<State>,
-    accept_states: Vec<State>,
-    transitions: HashMap<ReadingState, Vec<Transition>>,
-    machine_type: Option<TuringMachineType>
-}
-
-impl TuringMachineBuilder {
-    pub fn new() -> Self {
-        Self {
-            tape: None,
-            initial_tape: None,
-            initial_state: None,
-            current_state: None,
-            machine_type: None,
-            accept_states: Vec::new(),
-            transitions: HashMap::new()
-        }
-    }
-
-    pub fn with_tape(&mut self, tape: Tape) -> &mut Self {
-        self.tape = Some(tape.clone());
-        self.initial_tape = Some(tape);
-
-        self
-    }
-
-    pub fn with_initial_state(&mut self, state: State) -> &mut Self {
-        self.initial_state = Some(state);
-        self.current_state = Some(state);
-
-        self
-    }
-
-    pub fn with_accept_state(&mut self, state: State) -> &mut Self {
-        self.accept_states.push(state);
-
-        self
-    }
-
-    pub fn with_accept_states(&mut self, states: Vec<State>) -> &mut Self {
-        self.accept_states.extend(states);
-
-        self
-    }
-
-    pub fn with_machine_type(&mut self, machine_type: TuringMachineType) -> &mut Self {
-        self.machine_type = Some(machine_type);
-
-        self
-    }
-
-    pub fn insert_transition(&mut self, reading_state: ReadingState, transition: Transition) -> &mut Self {
-        if self.transitions.contains_key(&reading_state) {
-            self.transitions.get_mut(&reading_state).unwrap().push(transition);
-        } else {
-            self.transitions.insert(reading_state, vec![transition]);
-        }
-
-        self
-    }
-
-    pub fn insert_transitions(&mut self, transitions: Vec<(ReadingState, Transition)>) -> &mut Self {
-        for (reading_state, transition) in transitions {
-            self.insert_transition(reading_state, transition);
-        }
-
-        self
-    }
-
-    pub fn build(self) -> TuringMachine {
-        TuringMachine {
-            tape: self.tape.expect("Tape must be set"),
-            initial_tape: self.initial_tape.expect("Initial tape must be set"),
-            initial_state: self.initial_state.expect("Initial state must be set"),
-            current_state: self.current_state.expect("Current state must be set"),
-            accept_states: self.accept_states,
-            transitions: self.transitions,
-            history: Vec::new(),
-            machine_type: self.machine_type.expect("Machine type must be set")
-        }
-    }
-}
-
-pub struct TuringMachine {
-    tape: Tape,
-    initial_tape: Tape,
-    initial_state: State,
-    current_state: State,
-    transitions: HashMap<ReadingState, Vec<Transition>>,
-    history: Vec<(Tape, State)>,
-    accept_states: Vec<State>,
-    machine_type: TuringMachineType
-}
-
-impl TuringMachine {
-    pub fn step(&mut self) -> Option<HaltState> {
-        if matches!(self.machine_type, TuringMachineType::NonDeterministic(_)) {
-            todo!("Implement non-deterministic Turing machine stepping logic");
-        }
-
-        if self.history.len() >= self.tape.size {
-            return Some(HaltState::Reject(RejectReason::Timeout));
-        }
-
-        if self.tape.read().len() > self.tape.size {
-            return Some(HaltState::Reject(RejectReason::TapeOverflow));
-        }
-
-        let reading_state = (self.current_state, self.tape.head);
-
-        if self.accept_states.contains(&self.current_state) {
-            return Some(HaltState::Accept);
-        }
-
-        if let Some(&(new_state, new_symbol, direction)) = self.transitions.get(&reading_state).and_then(|v| v.first()) {
-            self.history.push((self.tape.clone(), self.current_state));
-
-            self.tape.write(new_symbol);
-            self.current_state = new_state;
-
-            match direction {
-                Direction::Left => {
-                    if let Some(symbol) = self.tape.left.pop() {
-                        self.tape.right.push(self.tape.head);
-                        self.tape.write(symbol);
-                    } else {
-                        match self.machine_type {
-                            TuringMachineType::Deterministic(Characteristics { tape_type: TapeType::SemiInfinite(TapeBoundary::Left), .. }) |
-                            TuringMachineType::NonDeterministic(Characteristics { tape_type: TapeType::SemiInfinite(TapeBoundary::Left), .. }) => {
-                                return Some(HaltState::Reject(RejectReason::HitWall));
-                            },
-                            _ => {
-                                self.tape.right.push(self.tape.head);
-                                self.tape.write(None);
-                            }
-                        }
-                    }
-                },
-                Direction::Right => {
-                    if let Some(symbol) = self.tape.right.pop() {
-                        self.tape.left.push(self.tape.head);
-                        self.tape.write(symbol);
-                    } else {
-                        self.tape.left.push(self.tape.head);
-                        self.tape.write(None);
-                    }
-                },
-                Direction::Stay => {
-                    match self.machine_type {
-                        TuringMachineType::Deterministic(Characteristics { move_type: MoveType::Strict, .. }) |
-                        TuringMachineType::NonDeterministic(Characteristics { move_type: MoveType::Strict, .. }) => {
-                            return Some(HaltState::Reject(RejectReason::InvalidTransition));
-                        },
-                        _ => {}
-                    }
-                }
-            }
-
-            None
-        } else {
-            return Some(HaltState::Reject(RejectReason::NoTransition));
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.tape = self.initial_tape.clone();
-        self.current_state = self.initial_state;
-        self.history.clear();
-    }
-
-    pub fn back(&mut self) -> bool {
-        if let Some((tape, state)) = self.history.pop() {
-            self.tape = tape;
-            self.current_state = state;
-
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn tape(&self) -> &Tape {
-        &self.tape
-    }
-
-    pub fn current_state(&self) -> State {
-        self.current_state
-    }
-
-    pub fn initial_state(&self) -> State {
-        self.initial_state
-    }
-
-    pub fn transitions(&self) -> &HashMap<ReadingState, Vec<Transition>> {
-        &self.transitions
-    }
-
-    pub fn history(&self) -> &Vec<(Tape, State)> {
-        &self.history
-    }
-
-    pub fn accept_states(&self) -> &Vec<State> {
-        &self.accept_states
-    }
-
-    pub fn machine_type(&self) -> &TuringMachineType {
-        &self.machine_type
-    }
+    /// Offset from the initial alphabet. Useful for seminfinite tapes, where we
+    /// need to track how far we've moved from the initial position to know when
+    /// hitting the wall.
+    pub offset: isize,
 }

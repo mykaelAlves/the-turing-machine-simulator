@@ -1,0 +1,40 @@
+# Rustfmt configuration for improved readability with nightly features
+
+edition = "2021"
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Auto"
+use_small_heuristics = "Default"
+
+# Line length
+max_width = 100
+comment_width = 80
+
+# Formatting
+format_strings = true
+normalize_comments = true
+wrap_comments = true
+
+# Imports
+reorder_imports = true
+reorder_modules = true
+group_imports = "StdExternalCrate"
+
+# Nightly features
+unstable_features = true
+format_code_in_doc_comments = true
+normalize_doc_attributes = true
+merge_derives = true
+use_try_shorthand = true
+use_field_init_shorthand = true
+force_explicit_abi = true
+
+# Functions and control flow
+fn_single_line = false
+where_single_line = false
+match_block_trailing_comma = false
+
+# Spacing
+space_after_colon = true
+space_before_colon = false
+spaces_around_ranges = false

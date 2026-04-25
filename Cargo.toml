@@ -12,6 +12,5 @@ tm-core = { path = "tm-core" }
 tm-parser = { path = "tm-parser" }
 
 [dependencies]
-egui = "0.34.1"
 wgpu = "29.0.1"
 winit = "0.30.13"
