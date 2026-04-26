@@ -181,7 +181,7 @@ pub enum TapeBoundary {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TapeTheoraticalSize {
+pub enum TapeTheoreticalSize {
     Finite(u16),
 
     SemiInfinite(TapeBoundary),
@@ -189,7 +189,7 @@ pub enum TapeTheoraticalSize {
     Infinite,
 }
 
-impl Default for TapeTheoraticalSize {
+impl Default for TapeTheoreticalSize {
     fn default() -> Self {
         Self::SemiInfinite(TapeBoundary::default())
     }
@@ -225,7 +225,7 @@ pub struct SingleTapeDTMBuilder {
     tape: Option<SingleTape>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
-    tape_size: Option<TapeTheoraticalSize>,
+    tape_size: Option<TapeTheoreticalSize>,
     true_bounds: TrueBounds,
 }
 
@@ -320,7 +320,7 @@ impl SingleTapeDTMBuilder {
         self
     }
 
-    pub fn with_tape_size(&mut self, tape_size: TapeTheoraticalSize) -> &mut Self {
+    pub fn with_tape_size(&mut self, tape_size: TapeTheoreticalSize) -> &mut Self {
         self.tape_size = Some(tape_size);
 
         self
@@ -341,7 +341,7 @@ pub struct SingleTapeDTM {
     tape: SingleTape,
     current_state: State,
     move_type: MoveType,
-    tape_size: TapeTheoraticalSize,
+    tape_size: TapeTheoreticalSize,
     history: Vec<(SingleTape, State)>,
     true_bounds: TrueBounds,
 }
@@ -366,7 +366,7 @@ impl Computable for SingleTapeDTM {
             )));
         }
 
-        if let TapeTheoraticalSize::Finite(max_limit) = self.tape_size {
+        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
             if current_size >= max_limit {
                 return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
             }
@@ -390,7 +390,7 @@ impl Computable for SingleTapeDTM {
             match direction {
                 Direction::Left => {
                     if self.tape.left.is_empty() {
-                        if self.tape_size == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Left) {
+                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left) {
                             self.history.pop();
 
                             return Some(HaltingState::Reject(HaltingStateReason::HitWall));
@@ -405,7 +405,7 @@ impl Computable for SingleTapeDTM {
                 }
                 Direction::Right => {
                     if self.tape.right.is_empty() {
-                        if self.tape_size == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Right)
+                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
                         {
                             self.history.pop();
 
@@ -471,7 +471,7 @@ pub struct MultiTapeDTMBuilder<const TAPES: usize> {
     tape: Option<MultiTape<TAPES>>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
-    tape_size: Option<TapeTheoraticalSize>,
+    tape_size: Option<TapeTheoreticalSize>,
     true_bounds: TrueBounds,
 }
 
@@ -555,7 +555,7 @@ impl<const TAPES: usize> MultiTapeDTMBuilder<TAPES> {
         self
     }
 
-    pub fn with_tape_size(&mut self, tape_size: TapeTheoraticalSize) -> &mut Self {
+    pub fn with_tape_size(&mut self, tape_size: TapeTheoreticalSize) -> &mut Self {
         self.tape_size = Some(tape_size);
 
         self
@@ -576,7 +576,7 @@ pub struct MultiTapeDTM<const TAPES: usize> {
     tape: MultiTape<TAPES>,
     current_state: State,
     move_type: MoveType,
-    tape_size: TapeTheoraticalSize,
+    tape_size: TapeTheoreticalSize,
     history: Vec<(MultiTape<TAPES>, State)>,
     true_bounds: TrueBounds,
 }
@@ -607,7 +607,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
             )));
         }
 
-        if let TapeTheoraticalSize::Finite(max_limit) = self.tape_size {
+        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
             if max_current_size >= max_limit {
                 return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
             }
@@ -634,7 +634,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                     Direction::Left => {
                         if single_tape.left.is_empty() {
                             if self.tape_size
-                                == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Left)
+                                == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left)
                             {
                                 let (old_tape, _) = self.history.pop().unwrap();
                                 self.tape = old_tape;
@@ -649,7 +649,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                     Direction::Right => {
                         if single_tape.right.is_empty() {
                             if self.tape_size
-                                == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Right)
+                                == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
                             {
                                 let (old_tape, _) = self.history.pop().unwrap();
                                 self.tape = old_tape;
@@ -716,7 +716,7 @@ pub struct MultiHeadDTMBuilder<const HEADS: usize> {
     tape: Option<MultiHeadTape<HEADS>>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
-    tape_size: Option<TapeTheoraticalSize>,
+    tape_size: Option<TapeTheoreticalSize>,
     true_bounds: TrueBounds,
 }
 
@@ -802,7 +802,7 @@ impl<const HEADS: usize> MultiHeadDTMBuilder<HEADS> {
         self
     }
 
-    pub fn with_tape_size(&mut self, tape_size: TapeTheoraticalSize) -> &mut Self {
+    pub fn with_tape_size(&mut self, tape_size: TapeTheoreticalSize) -> &mut Self {
         self.tape_size = Some(tape_size);
 
         self
@@ -823,7 +823,7 @@ pub struct MultiHeadDTM<const HEADS: usize> {
     tape: MultiHeadTape<HEADS>,
     current_state: State,
     move_type: MoveType,
-    tape_size: TapeTheoraticalSize,
+    tape_size: TapeTheoreticalSize,
     history: Vec<(MultiHeadTape<HEADS>, State)>,
     true_bounds: TrueBounds,
 }
@@ -848,7 +848,7 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
             )));
         }
 
-        if let TapeTheoraticalSize::Finite(max_limit) = self.tape_size {
+        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
             if current_size >= max_limit {
                 return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
             }
@@ -874,7 +874,7 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
                     Direction::Left => {
                         if self.tape.head_positions[i] == 0 {
                             if self.tape_size
-                                == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Left)
+                                == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left)
                             {
                                 let (old_tape, _) = self.history.pop().unwrap();
                                 self.tape = old_tape;
@@ -896,7 +896,7 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
                     Direction::Right => {
                         if self.tape.head_positions[i] == self.tape.memory.len() - 1 {
                             if self.tape_size
-                                == TapeTheoraticalSize::SemiInfinite(TapeBoundary::Right)
+                                == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
                             {
                                 let (old_tape, _) = self.history.pop().unwrap();
                                 self.tape = old_tape;
@@ -1006,7 +1006,7 @@ mod tests {
             .with_accepting_states(vec![accept_state])
             .with_tape(initial_tape)
             .with_move_type(MoveType::Strict)
-            .with_tape_size(TapeTheoraticalSize::SemiInfinite(TapeBoundary::Left))
+            .with_tape_size(TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left))
             .insert_transition(
                 Reading {
                     state: state_0,
