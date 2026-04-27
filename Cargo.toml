@@ -12,5 +12,6 @@ tm-core = { path = "tm-core" }
 tm-parser = { path = "tm-parser" }
 
 [dependencies]
+dioxus = "0.7.6"
 wgpu = "29.0.1"
 winit = "0.30.13"

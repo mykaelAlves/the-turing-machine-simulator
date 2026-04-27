@@ -1,3 +1,5 @@
+use crate::tape::single::SingleTape;
+
 /// Even if the machine is infinite, we need to set a maximum tape size to
 /// prevent the simulator from running indefinitely. This is a reasonable
 /// limit for most Turing machine simulations, as it allows us to explore a
@@ -102,4 +104,25 @@ impl Default for TrueBounds {
             max_heads: N_HEADS,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TapeDelta {
+    pub previous_state: State,
+    pub overwritten_symbol: Symbol,
+    pub direction_moved: Direction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MultiTapeDelta<const TAPES: usize> {
+    pub previous_state: State,
+    pub overwritten_symbols: [Symbol; TAPES],
+    pub directions_moved: [Direction; TAPES],
+}
+
+#[derive(Debug, Clone)]
+pub struct Configuration {
+    pub tape: SingleTape,
+    pub current_state: State,
+    pub history: Vec<TapeDelta>,
 }

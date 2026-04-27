@@ -181,7 +181,7 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
                                 let (old_tape, old_state) = self.history.pop().unwrap();
                                 self.tape = old_tape;
                                 self.current_state = old_state;
-                                
+
                                 return Some(HaltingState::Reject(HaltingStateReason::HitWall));
                             }
 

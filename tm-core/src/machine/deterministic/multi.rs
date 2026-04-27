@@ -130,6 +130,12 @@ pub struct MultiTapeDTM<const TAPES: usize> {
 
 impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
     fn run_once(&mut self) -> Option<HaltingState> {
+        if self.true_bounds.max_tapes < TAPES as u8 {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxTapes,
+            )));
+        }
+
         if self.accepting_states.contains(&self.current_state) {
             return Some(HaltingState::Accept);
         }
@@ -230,14 +236,6 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
         }
 
         Some(HaltingState::Reject(HaltingStateReason::NoTransition))
-    }
-
-    fn run(&mut self) -> HaltingState {
-        loop {
-            if let Some(halt_state) = self.run_once() {
-                return halt_state;
-            }
-        }
     }
 
     #[inline]
