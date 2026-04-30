@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::{
     halt::{HaltingState, HaltingStateReason, InternalHaltingStateReason},
@@ -14,7 +14,7 @@ pub struct MultiHeadDTMBuilder<const HEADS: usize> {
     transitions: HashMap<Reading<[Symbol; HEADS]>, Action<[Symbol; HEADS], [Direction; HEADS]>>,
     initial_state: Option<State>,
     initial_tape: Option<MultiHeadTape<HEADS>>,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: Option<MultiHeadTape<HEADS>>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
@@ -28,7 +28,7 @@ impl<const HEADS: usize> MultiHeadDTMBuilder<HEADS> {
             transitions: HashMap::default(),
             initial_state: None,
             initial_tape: None,
-            accepting_states: Vec::new(),
+            accepting_states: HashSet::default(),
             tape: None,
             current_state: None,
             move_type: None,
@@ -93,7 +93,7 @@ impl<const HEADS: usize> MultiHeadDTMBuilder<HEADS> {
     }
 
     pub fn with_accepting_states(&mut self, accepting_states: Vec<State>) -> &mut Self {
-        self.accepting_states = accepting_states;
+        self.accepting_states = accepting_states.into_iter().collect();
 
         self
     }
@@ -121,7 +121,7 @@ pub struct MultiHeadDTM<const HEADS: usize> {
     transitions: HashMap<Reading<[Symbol; HEADS]>, Action<[Symbol; HEADS], [Direction; HEADS]>>,
     initial_state: State,
     initial_tape: MultiHeadTape<HEADS>,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: MultiHeadTape<HEADS>,
     current_state: State,
     move_type: MoveType,
@@ -132,28 +132,8 @@ pub struct MultiHeadDTM<const HEADS: usize> {
 
 impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
     fn run_once(&mut self) -> Option<HaltingState> {
-        if self.accepting_states.contains(&self.current_state) {
-            return Some(HaltingState::Accept);
-        }
-
-        if self.history.len() as u16 >= self.true_bounds.max_steps {
-            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                InternalHaltingStateReason::ExceededMaxSteps,
-            )));
-        }
-
-        let current_size = self.tape.memory.len() as u16;
-
-        if current_size > self.true_bounds.true_tape_size {
-            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                InternalHaltingStateReason::ExceededMaxTapeSize,
-            )));
-        }
-
-        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
-            if current_size >= max_limit {
-                return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
-            }
+        if let Some(halting_state) = self.check_bounds() {
+            return Some(halting_state);
         }
 
         let current_symbols = self.tape.read();
@@ -231,6 +211,34 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
         }
 
         Some(HaltingState::Reject(HaltingStateReason::NoTransition))
+    }
+
+    fn check_bounds(&self) -> Option<HaltingState> {
+        if self.accepting_states.contains(&self.current_state) {
+            return Some(HaltingState::Accept);
+        }
+
+        if self.history.len() as u16 >= self.true_bounds.max_steps {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxSteps,
+            )));
+        }
+
+        let current_size = self.tape.memory.len() as u16;
+
+        if current_size > self.true_bounds.true_tape_size {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxTapeSize,
+            )));
+        }
+
+        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
+            if current_size >= max_limit {
+                return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
+            }
+        }
+
+        None
     }
 
     fn run(&mut self) -> HaltingState {

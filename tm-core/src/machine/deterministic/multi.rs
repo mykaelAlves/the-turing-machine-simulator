@@ -1,12 +1,12 @@
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::{
     halt::{HaltingState, HaltingStateReason, InternalHaltingStateReason},
     machine::Computable,
     tape::multi::MultiTape,
     types::{
-        Action, Direction, MoveType, Reading, State, Symbol, TapeBoundary, TapeTheoreticalSize,
-        TrueBounds,
+        Action, Direction, MoveType, MultiTapeDelta, Reading, State, Symbol, TapeBoundary,
+        TapeTheoreticalSize, TrueBounds,
     },
 };
 
@@ -14,7 +14,7 @@ pub struct MultiTapeDTMBuilder<const TAPES: usize> {
     transitions: HashMap<Reading<[Symbol; TAPES]>, Action<[Symbol; TAPES], [Direction; TAPES]>>,
     initial_state: Option<State>,
     initial_tape: Option<MultiTape<TAPES>>,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: Option<MultiTape<TAPES>>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
@@ -28,7 +28,7 @@ impl<const TAPES: usize> MultiTapeDTMBuilder<TAPES> {
             transitions: HashMap::default(),
             initial_state: None,
             initial_tape: None,
-            accepting_states: Vec::new(),
+            accepting_states: HashSet::default(),
             tape: None,
             current_state: None,
             move_type: None,
@@ -91,7 +91,7 @@ impl<const TAPES: usize> MultiTapeDTMBuilder<TAPES> {
     }
 
     pub fn with_accepting_states(&mut self, accepting_states: Vec<State>) -> &mut Self {
-        self.accepting_states = accepting_states;
+        self.accepting_states = accepting_states.into_iter().collect();
 
         self
     }
@@ -119,52 +119,18 @@ pub struct MultiTapeDTM<const TAPES: usize> {
     transitions: HashMap<Reading<[Symbol; TAPES]>, Action<[Symbol; TAPES], [Direction; TAPES]>>,
     initial_state: State,
     initial_tape: MultiTape<TAPES>,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: MultiTape<TAPES>,
     current_state: State,
     move_type: MoveType,
     tape_size: TapeTheoreticalSize,
-    history: Vec<(MultiTape<TAPES>, State)>,
+    history: Vec<MultiTapeDelta<TAPES>>,
     true_bounds: TrueBounds,
 }
 
 impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
     fn run_once(&mut self) -> Option<HaltingState> {
-        if self.true_bounds.max_tapes < TAPES as u8 {
-            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                InternalHaltingStateReason::ExceededMaxTapes,
-            )));
-        }
-
-        if self.accepting_states.contains(&self.current_state) {
-            return Some(HaltingState::Accept);
-        }
-
-        if self.history.len() as u16 >= self.true_bounds.max_steps {
-            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                InternalHaltingStateReason::ExceededMaxSteps,
-            )));
-        }
-
-        let mut max_current_size = 0;
-        for t in &self.tape.0 {
-            let size = t.left.len() as u16 + t.right.len() as u16 + 1;
-            if size > max_current_size {
-                max_current_size = size;
-            }
-        }
-
-        if max_current_size > self.true_bounds.true_tape_size {
-            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                InternalHaltingStateReason::ExceededMaxTapeSize,
-            )));
-        }
-
-        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
-            if max_current_size >= max_limit {
-                return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
-            }
-        }
+        self.check_bounds()?;
 
         let current_symbols = self.tape.read();
         let reading_state = Reading {
@@ -238,6 +204,44 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
         Some(HaltingState::Reject(HaltingStateReason::NoTransition))
     }
 
+    fn check_bounds(&self) -> Option<HaltingState> {
+        if self.true_bounds.max_tapes < TAPES as u8 {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxTapes,
+            )));
+        }
+
+        if self.accepting_states.contains(&self.current_state) {
+            return Some(HaltingState::Accept);
+        }
+
+        if self.history.len() as u16 >= self.true_bounds.max_steps {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxSteps,
+            )));
+        }
+
+        let mut max_current_size = 0;
+        for t in &self.tape.0 {
+            let size = t.left.len() as u16 + t.right.len() as u16 + 1;
+            if size > max_current_size {
+                max_current_size = size;
+            }
+        }
+
+        if max_current_size > self.true_bounds.true_tape_size {
+            return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                InternalHaltingStateReason::ExceededMaxTapeSize,
+            )));
+        }
+
+        if let TapeTheoreticalSize::Finite(max_limit) = self.tape_size {
+            if max_current_size >= max_limit {
+                return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
+            }
+        }
+    }
+
     #[inline]
     fn reset(&mut self) {
         self.tape = self.initial_tape.clone();
@@ -251,5 +255,37 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
             self.tape = tape;
             self.current_state = state;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn test() {
+        let tapes = 3;
+        let tm = MultiTapeDTMBuilder::<tapes>::new()
+            .with_initial_state(0)
+            .with_tapes(MultiTape::new(vec![vec![], vec![]], vec![None, None]))
+            .with_accepting_states(vec![1])
+            .with_move_type(MoveType::Strict)
+            .with_tape_size(TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right))
+            .with_bounds(TrueBounds {
+                max_tapes: 2,
+                max_steps: 100,
+                true_tape_size: 100,
+            })
+            .insert_transition(
+                Reading {
+                    state: 0,
+                    symbol: [None, None],
+                },
+                Action {
+                    next_state: 1,
+                    write_symbol: [Some(1), Some(0)],
+                    direction: [Direction::Right, Direction::Right],
+                },
+            )
+            .build()
+            .unwrap();
     }
 }

@@ -1,12 +1,12 @@
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::{
     halt::{HaltingState, HaltingStateReason, InternalHaltingStateReason},
     machine::Computable,
     tape::single::SingleTape,
     types::{
-        Action, Direction, MoveType, Reading, State, Symbol, TapeBoundary, TapeTheoreticalSize,
-        TrueBounds,
+        Action, Direction, MoveType, Reading, State, Symbol, TapeBoundary, TapeDelta,
+        TapeTheoreticalSize, TrueBounds,
     },
 };
 
@@ -17,7 +17,7 @@ pub struct SingleTapeDTMBuilder {
     transitions: HashMap<Reading<Symbol>, Action<Symbol, Direction>>,
     initial_state: Option<State>,
     initial_tape: Option<SingleTape>,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: Option<SingleTape>,
     current_state: Option<State>,
     move_type: Option<MoveType>,
@@ -31,7 +31,7 @@ impl Default for SingleTapeDTMBuilder {
             transitions: HashMap::default(),
             initial_state: None,
             initial_tape: None,
-            accepting_states: Vec::new(),
+            accepting_states: HashSet::default(),
             tape: None,
             current_state: None,
             move_type: None,
@@ -56,7 +56,7 @@ impl SingleTapeDTMBuilder {
             current_state: self.initial_state?,
             move_type: self.move_type?,
             tape_size: self.tape_size?,
-            history: Vec::new(),
+            history: Vec::with_capacity(self.true_bounds.max_steps as usize),
             true_bounds: self.true_bounds,
         })
     }
@@ -105,7 +105,7 @@ impl SingleTapeDTMBuilder {
     }
 
     pub fn with_accepting_states(&mut self, accepting_states: Vec<State>) -> &mut Self {
-        self.accepting_states = accepting_states;
+        self.accepting_states = accepting_states.into_iter().collect();
 
         self
     }
@@ -133,17 +133,91 @@ pub struct SingleTapeDTM {
     transitions: HashMap<Reading<Symbol>, Action<Symbol, Direction>>,
     initial_state: State,
     initial_tape: SingleTape,
-    accepting_states: Vec<State>,
+    accepting_states: HashSet<State>,
     tape: SingleTape,
     current_state: State,
     move_type: MoveType,
     tape_size: TapeTheoreticalSize,
-    history: Vec<(SingleTape, State)>,
+    history: Vec<TapeDelta>,
     true_bounds: TrueBounds,
 }
 
 impl Computable for SingleTapeDTM {
     fn run_once(&mut self) -> Option<HaltingState> {
+        if let Some(halting_state) = self.check_bounds() {
+            return Some(halting_state);
+        }
+
+        let current_symbol = self.tape.read();
+        let reading_state = Reading {
+            state: self.current_state,
+            symbol: current_symbol,
+        };
+
+        if let Some(transition) = self.transitions.get(&reading_state) {
+            let (new_state, new_symbol, direction) = (
+                transition.next_state,
+                transition.write_symbol,
+                transition.direction,
+            );
+
+            self.history.push(TapeDelta {
+                previous_state: self.current_state,
+                overwritten_symbol: current_symbol,
+                direction_moved: direction,
+            });
+
+            match direction {
+                Direction::Left => {
+                    if self.tape.left.is_empty() {
+                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left) {
+                            self.history.pop();
+
+                            return Some(HaltingState::Reject(HaltingStateReason::HitWall));
+                        }
+                    }
+
+                    self.tape.write(new_symbol, direction);
+                    self.current_state = new_state;
+
+                    return None;
+                }
+                Direction::Right => {
+                    if self.tape.right.is_empty() {
+                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
+                        {
+                            self.history.pop();
+
+                            return Some(HaltingState::Reject(HaltingStateReason::HitWall));
+                        }
+                    }
+
+                    self.tape.write(new_symbol, direction);
+                    self.current_state = new_state;
+
+                    return None;
+                }
+                Direction::Stay => {
+                    if self.move_type == MoveType::Strict {
+                        self.history.pop();
+
+                        return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
+                            InternalHaltingStateReason::InvalidTransition,
+                        )));
+                    }
+
+                    self.tape.write(new_symbol, direction);
+                    self.current_state = new_state;
+
+                    return None;
+                }
+            }
+        }
+
+        Some(HaltingState::Reject(HaltingStateReason::NoTransition))
+    }
+
+    fn check_bounds(&self) -> Option<HaltingState> {
         if self.accepting_states.contains(&self.current_state) {
             return Some(HaltingState::Accept);
         }
@@ -168,71 +242,7 @@ impl Computable for SingleTapeDTM {
             }
         }
 
-        let current_symbol = self.tape.read();
-        let reading_state = Reading {
-            state: self.current_state,
-            symbol: current_symbol,
-        };
-
-        if let Some(transition) = self.transitions.get(&reading_state) {
-            let (new_state, new_symbol, direction) = (
-                transition.next_state,
-                transition.write_symbol,
-                transition.direction,
-            );
-
-            self.history.push((self.tape.clone(), self.current_state));
-
-            match direction {
-                Direction::Left => {
-                    if self.tape.left.is_empty() {
-                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left) {
-                            self.history.pop();
-
-                            return Some(HaltingState::Reject(HaltingStateReason::HitWall));
-                        }
-                    }
-
-                    self.tape.right.push(new_symbol);
-                    self.tape.head = self.tape.left.pop().unwrap_or(None);
-                    self.current_state = new_state;
-
-                    return None;
-                }
-                Direction::Right => {
-                    if self.tape.right.is_empty() {
-                        if self.tape_size == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
-                        {
-                            self.history.pop();
-
-                            return Some(HaltingState::Reject(HaltingStateReason::HitWall));
-                        }
-                    }
-
-                    self.tape.left.push(new_symbol);
-                    self.tape.head = self.tape.right.pop().unwrap_or(None);
-                    self.current_state = new_state;
-
-                    return None;
-                }
-                Direction::Stay => {
-                    if self.move_type == MoveType::Strict {
-                        self.history.pop();
-
-                        return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
-                            InternalHaltingStateReason::InvalidTransition,
-                        )));
-                    }
-
-                    self.tape.head = new_symbol;
-                    self.current_state = new_state;
-
-                    return None;
-                }
-            }
-        }
-
-        Some(HaltingState::Reject(HaltingStateReason::NoTransition))
+        None
     }
 
     fn run(&mut self) -> HaltingState {
@@ -252,9 +262,10 @@ impl Computable for SingleTapeDTM {
 
     #[inline]
     fn back(&mut self) {
-        if let Some((tape, state)) = self.history.pop() {
-            self.tape = tape;
-            self.current_state = state;
+        if let Some(delta) = self.history.pop() {
+            self.current_state = delta.previous_state;
+            self.tape
+                .write(delta.overwritten_symbol, !delta.direction_moved);
         }
     }
 }

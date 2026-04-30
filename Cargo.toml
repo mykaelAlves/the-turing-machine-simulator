@@ -15,3 +15,5 @@ tm-parser = { path = "tm-parser" }
 dioxus = "0.7.6"
 wgpu = "29.0.1"
 winit = "0.30.13"
+tm-core = { workspace = true }
+tm-parser = { workspace = true }

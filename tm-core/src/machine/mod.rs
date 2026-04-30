@@ -1,4 +1,4 @@
-use crate::halt::HaltingState;
+use crate::{error::BuildingError, halt::HaltingState};
 
 pub mod deterministic;
 pub mod non_deterministic;
@@ -14,6 +14,20 @@ pub trait Computable {
     }
 
     fn run_once(&mut self) -> Option<HaltingState>;
+    fn check_bounds(&self) -> Option<HaltingState>;
     fn reset(&mut self);
     fn back(&mut self);
+}
+
+pub trait Builder {
+    fn new() -> Self
+    where
+        Self: Sized + Default,
+    {
+        Self::default()
+    }
+
+    fn build(&mut self) -> Result<Box<dyn Computable>, BuildingError>
+    where
+        Self: Sized;
 }

@@ -1,4 +1,4 @@
-use crate::types::Symbol;
+use crate::types::{Direction, Symbol};
 
 #[derive(Debug, Clone)]
 pub struct SingleTape {
@@ -17,6 +17,22 @@ pub struct SingleTape {
 impl SingleTape {
     pub fn read(&self) -> Symbol {
         self.head
+    }
+
+    pub fn write(&mut self, symbol: Symbol, direction: Direction) {
+        match direction {
+            Direction::Left => {
+                self.right.push(symbol);
+                self.head = self.left.pop().unwrap_or(None);
+            }
+            Direction::Right => {
+                self.left.push(symbol);
+                self.head = self.right.pop().unwrap_or(None);
+            }
+            Direction::Stay => {
+                self.head = symbol;
+            }
+        }
     }
 
     pub fn to_vec(&self) -> Vec<Symbol> {

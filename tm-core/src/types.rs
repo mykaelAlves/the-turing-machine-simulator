@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use crate::tape::single::SingleTape;
 
 /// Even if the machine is infinite, we need to set a maximum tape size to
@@ -15,10 +17,10 @@ pub const MAX_TAPE_SIZE: u16 = 5_000;
 /// execution time and resources used by the simulator.
 ///
 /// Can be overriden by the user.
-pub const MAX_STEPS: u16 = 10_000;
+pub const MAX_STEPS: u16 = 20_000;
 
-pub const N_TAPES: u8 = 4;
-pub const N_HEADS: u8 = 4;
+pub const N_TAPES: u8 = 2;
+pub const N_HEADS: u8 = 2;
 
 /// Represents a symbol on the tape. Using `Option<char>` to allow for a blank
 /// as None.
@@ -44,6 +46,18 @@ pub enum Direction {
     Stay,
 }
 
+impl Not for Direction {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+            Direction::Stay => Direction::Stay,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct State(pub u16);
 
@@ -52,16 +66,6 @@ pub enum MoveType {
     #[default]
     Strict, // classical, no staying in place
     NonStrict,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TapeType {
-    #[default]
-    Single,
-
-    MultiTape,
-
-    MultiHead,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
