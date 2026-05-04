@@ -143,7 +143,13 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
             let write_symbols = transition.write_symbol;
             let directions = transition.direction;
 
-            self.history.push((self.tape.clone(), self.current_state));
+            self.history.push(
+                MultiTapeDelta {
+                    previous_state: self.current_state,
+                    overwritten_symbols: current_symbols,
+                    directions_moved: directions,
+                }
+            );
 
             for i in 0..TAPES {
                 let single_tape = &mut self.tape.0[i];
@@ -155,9 +161,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                             if self.tape_size
                                 == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Left)
                             {
-                                let (old_tape, old_state) = self.history.pop().unwrap();
-                                self.tape = old_tape;
-                                self.current_state = old_state;
+                                self.back();
 
                                 return Some(HaltingState::Reject(HaltingStateReason::HitWall));
                             }
@@ -171,8 +175,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                             if self.tape_size
                                 == TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right)
                             {
-                                let (old_tape, _) = self.history.pop().unwrap();
-                                self.tape = old_tape;
+                                self.back();
 
                                 return Some(HaltingState::Reject(HaltingStateReason::HitWall));
                             }
@@ -183,8 +186,7 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                     }
                     Direction::Stay => {
                         if self.move_type == MoveType::Strict {
-                            let (old_tape, _) = self.history.pop().unwrap();
-                            self.tape = old_tape;
+                            self.back();
 
                             return Some(HaltingState::Reject(HaltingStateReason::Unexpected(
                                 InternalHaltingStateReason::InvalidTransition,
@@ -240,6 +242,8 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
                 return Some(HaltingState::Reject(HaltingStateReason::FiniteTapeLimit));
             }
         }
+
+        None
     }
 
     #[inline]
@@ -251,41 +255,33 @@ impl<const TAPES: usize> Computable for MultiTapeDTM<TAPES> {
 
     #[inline]
     fn back(&mut self) {
-        if let Some((tape, state)) = self.history.pop() {
-            self.tape = tape;
-            self.current_state = state;
-        }
-    }
-}
+        if let Some(last_delta) = self.history.pop() {
+            self.current_state = last_delta.previous_state;
+            for i in 0..TAPES {
+                let single_tape = &mut self.tape.0[i];
+                let overwritten_symbol = last_delta.overwritten_symbols[i];
+                let direction_moved = last_delta.directions_moved[i];
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn test() {
-        let tapes = 3;
-        let tm = MultiTapeDTMBuilder::<tapes>::new()
-            .with_initial_state(0)
-            .with_tapes(MultiTape::new(vec![vec![], vec![]], vec![None, None]))
-            .with_accepting_states(vec![1])
-            .with_move_type(MoveType::Strict)
-            .with_tape_size(TapeTheoreticalSize::SemiInfinite(TapeBoundary::Right))
-            .with_bounds(TrueBounds {
-                max_tapes: 2,
-                max_steps: 100,
-                true_tape_size: 100,
-            })
-            .insert_transition(
-                Reading {
-                    state: 0,
-                    symbol: [None, None],
-                },
-                Action {
-                    next_state: 1,
-                    write_symbol: [Some(1), Some(0)],
-                    direction: [Direction::Right, Direction::Right],
-                },
-            )
-            .build()
-            .unwrap();
+                match direction_moved {
+                    Direction::Left => {
+                        single_tape.left.push(single_tape.head);
+                        single_tape.head = single_tape.right.pop().unwrap_or(None);
+                        single_tape.head = overwritten_symbol;
+                    }
+                    Direction::Right => {
+                        single_tape.right.push(single_tape.head);
+                        single_tape.head = single_tape.left.pop().unwrap_or(None);
+                        single_tape.head = overwritten_symbol;
+                    }
+                    Direction::Stay => {
+                        if self.move_type == MoveType::Strict {
+                            return;
+                        }
+
+                        single_tape.head = overwritten_symbol;
+                    }
+                }
+            }
+        }
     }
 }

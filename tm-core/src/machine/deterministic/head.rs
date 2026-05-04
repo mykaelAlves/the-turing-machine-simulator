@@ -190,6 +190,7 @@ impl<const HEADS: usize> Computable for MultiHeadDTM<HEADS> {
 
                             self.tape.memory.push_back(None);
                         }
+                        
                         self.tape.head_positions[i] += 1;
                     }
                     Direction::Stay => {
